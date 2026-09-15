@@ -1,0 +1,53 @@
+{
+  "name": "pi-startup-update",
+  "version": "0.1.0",
+  "description": "Ask whether to update Pi and its extensions when a TUI session starts.",
+  "type": "module",
+  "license": "MIT",
+  "author": "mkaros2025",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mkaros2025/pi-startup-update.git"
+  },
+  "homepage": "https://github.com/mkaros2025/pi-startup-update#readme",
+  "bugs": {
+    "url": "https://github.com/mkaros2025/pi-startup-update/issues"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi",
+    "update",
+    "startup"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "files": [
+    "index.ts",
+    "logic.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --experimental-strip-types logic.test.mjs && node --experimental-strip-types startup-update.integration.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.85.1",
+    "@types/node": "22.19.19",
+    "typescript": "5.9.3"
+  }
+}
