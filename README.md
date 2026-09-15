@@ -2,7 +2,7 @@
 
 Ask whether to update Pi and its extensions when a TUI session starts.
 
-The prompt is currently in Chinese and has been tested with Pi 0.85.1. This package has not been published to npm yet.
+The prompt is currently in Chinese and has been tested with Pi 0.85.1.
 
 ## Install
 
