@@ -8,5 +8,5 @@
     "allowImportingTsExtensions": true,
     "skipLibCheck": true
   },
-  "include": ["index.ts", "logic.ts"]
+  "include": ["index.ts", "logic.ts", "restart.ts"]
 }

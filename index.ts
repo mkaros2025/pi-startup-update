@@ -12,6 +12,7 @@ import {
   type UpdateChoice,
   type UpdateInfo,
 } from "./logic.ts";
+import { restartSupport, type RestartSupport } from "./restart.ts";
 
 const LATEST_VERSION_URL = "https://pi.dev/api/latest-version";
 const CHECK_TIMEOUT_MS = 10_000;
@@ -98,7 +99,9 @@ async function update(
   choice: UpdateChoice,
   pi: ExtensionAPI,
   ctx: ExtensionContext,
+  restart: RestartSupport,
 ): Promise<void> {
+  const restartPi = restart.prepare(ctx);
   const args = getUpdateArgs(choice, ctx.isProjectTrusted());
   ctx.ui.setStatus(STATUS_ID, `正在运行 pi ${args.slice(1).join(" ")}...`);
 
@@ -120,22 +123,30 @@ async function update(
       return;
     }
 
-    ctx.ui.notify(
-      "更新完成。请退出当前 pi 后重新运行 pi，最新版本和扩展才会生效。",
-      "info",
-    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     ctx.ui.notify(
       `更新命令失败，Pi 或扩展可能已经部分更新：${message}`,
       "error",
     );
+    return;
   } finally {
     ctx.ui.setStatus(STATUS_ID, undefined);
   }
+
+  if (!restartPi) {
+    ctx.ui.notify("更新完成。当前环境不支持自动重启，请退出当前 pi 后重新运行 pi。", "warning");
+    return;
+  }
+  ctx.ui.notify("更新完成，正在自动重启 Pi…", "info");
+  try {
+    await restartPi();
+  } catch (error) {
+    ctx.ui.notify(`更新已完成，但自动重启失败：${String(error)}。请手动重新运行 pi。`, "error");
+  }
 }
 
-export default function (pi: ExtensionAPI) {
+export default function (pi: ExtensionAPI, restart: RestartSupport = restartSupport) {
   pi.on("session_start", async (event, ctx) => {
     if (
       event.reason !== "startup" ||
@@ -143,6 +154,7 @@ export default function (pi: ExtensionAPI) {
       process.env.PI_OFFLINE
     )
       return;
+    if (restart.consumeGuard()) return;
 
     const info = await collectUpdates(ctx);
     const options = getUpdateOptions(info, VERSION);
@@ -156,18 +168,19 @@ export default function (pi: ExtensionAPI) {
     ]
       .filter(Boolean)
       .join("；");
-    const updateNote = info.packageNames.length > 0
-      ? [
-          "确认后将调用 Pi 内置更新命令。",
-          "更新扩展时，会按配置中的包列表处理可更新包。",
-          "固定到指定 Git 提交/标签（ref）的包不会升级，但本地 checkout 可能会切换到对应 ref。",
-        ].join("\n")
-      : "确认后将调用 Pi 内置更新命令。";
+    const updateNote =
+      info.packageNames.length > 0
+        ? [
+            "确认后将调用 Pi 内置更新命令；成功后自动重启 Pi。",
+            "更新扩展时，会按配置中的包列表处理可更新包。",
+            "固定到指定 Git 提交/标签（ref）的包不会升级，但本地 checkout 可能会切换到对应 ref。",
+          ].join("\n")
+        : "确认后将调用 Pi 内置更新命令；成功后自动重启 Pi。";
     const selected = await ctx.ui.select(
       `发现可用更新（${details}）。\n${updateNote}\n请选择：`,
       options.map((option) => option.label),
     );
     const choice = options.find((option) => option.label === selected)?.choice;
-    if (choice && choice !== "skip") await update(choice, pi, ctx);
+    if (choice && choice !== "skip") await update(choice, pi, ctx, restart);
   });
 }

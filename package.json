@@ -1,6 +1,6 @@
 {
   "name": "pi-startup-update",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Ask whether to update Pi and its extensions when a TUI session starts.",
   "type": "module",
   "license": "MIT",
@@ -26,11 +26,12 @@
   "files": [
     "index.ts",
     "logic.ts",
+    "restart.ts",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --experimental-strip-types logic.test.mjs && node --experimental-strip-types startup-update.integration.test.mjs",
+    "test": "node --experimental-strip-types logic.test.mjs && node --experimental-strip-types restart.test.mjs && node --experimental-strip-types startup-update.integration.test.mjs",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm test"
   },

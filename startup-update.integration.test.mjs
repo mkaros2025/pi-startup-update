@@ -8,9 +8,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import extension from "./index.ts";
 
-const NEXT_VERSION = VERSION.replace(
-  /\d+$/,
-  (patch) => String(Number(patch) + 1),
+const NEXT_VERSION = VERSION.replace(/\d+$/, (patch) =>
+  String(Number(patch) + 1),
 );
 const originalPackageCheck =
   DefaultPackageManager.prototype.checkForAvailableUpdates;
@@ -35,6 +34,9 @@ async function runScenario({
   trusted = false,
   mode = "tui",
   reason = "startup",
+  guarded = false,
+  restartSupported = true,
+  restartError = false,
 }) {
   const cwd = await mkdtemp(join(tmpdir(), "pi-startup-update-cwd-"));
   const agentDir = await mkdtemp(join(tmpdir(), "pi-startup-update-agent-"));
@@ -74,7 +76,15 @@ async function runScenario({
       return execResult;
     },
   };
-  extension(pi);
+  const restartCalls = [];
+  const restart = {
+    consumeGuard: () => guarded,
+    prepare: () => restartSupported ? async () => {
+      restartCalls.push(true);
+      if (restartError) throw new Error("simulated restart failure");
+    } : undefined,
+  };
+  extension(pi, restart);
 
   try {
     await handlers.session_start(
@@ -102,7 +112,7 @@ async function runScenario({
     ]);
   }
 
-  return { prompts, notifications, execCalls, statuses, fetchCalls };
+  return { prompts, notifications, execCalls, statuses, fetchCalls, restartCalls };
 }
 
 try {
@@ -119,7 +129,7 @@ try {
   assert.ok(
     (result.prompts[0]?.title ?? "").includes(
       [
-        "确认后将调用 Pi 内置更新命令。",
+        "确认后将调用 Pi 内置更新命令；成功后自动重启 Pi。",
         "更新扩展时，会按配置中的包列表处理可更新包。",
         "固定到指定 Git 提交/标签（ref）的包不会升级，但本地 checkout 可能会切换到对应 ref。",
       ].join("\n"),
@@ -156,7 +166,11 @@ try {
     latest: NEXT_VERSION,
   });
   assert.equal(result.fetchCalls.length, 0, "version check should be skipped");
-  assert.equal(result.prompts.length, 0, "no package updates should not prompt");
+  assert.equal(
+    result.prompts.length,
+    0,
+    "no package updates should not prompt",
+  );
 
   result = await runScenario({ fetchError: true, packageError: true });
   assert.equal(
@@ -177,7 +191,8 @@ try {
     "pi",
     ["update", "--self"],
   ]);
-  assert.match(result.notifications.at(-1)?.message ?? "", /重新运行 pi/);
+  assert.match(result.notifications.at(-1)?.message ?? "", /自动重启 Pi/);
+  assert.equal(result.restartCalls.length, 1);
   assert.deepEqual(result.statuses.at(-1), {
     id: "startup-update",
     value: undefined,
@@ -211,6 +226,7 @@ try {
     ["update", "--all", "--no-approve"],
   ]);
   assert.match(result.notifications.at(-1)?.message ?? "", /部分更新/);
+  assert.equal(result.restartCalls.length, 0, "failed updates must not restart");
   assert.deepEqual(result.statuses.at(-1), {
     id: "startup-update",
     value: undefined,
@@ -240,6 +256,7 @@ try {
     },
   });
   assert.match(result.notifications.at(-1)?.message ?? "", /部分更新/);
+  assert.equal(result.restartCalls.length, 0, "failed updates must not restart");
   assert.deepEqual(result.statuses.at(-1), {
     id: "startup-update",
     value: undefined,
@@ -251,7 +268,10 @@ try {
     selection: (options) => options[0],
     execError: true,
   });
-  assert.match(result.notifications.at(-1)?.message ?? "", /simulated exec failure/);
+  assert.match(
+    result.notifications.at(-1)?.message ?? "",
+    /simulated exec failure/,
+  );
   assert.deepEqual(result.statuses.at(-1), {
     id: "startup-update",
     value: undefined,
@@ -274,6 +294,25 @@ try {
   });
   assert.equal(result.prompts.length, 0, "reload should not prompt");
   assert.equal(result.execCalls.length, 0);
+
+  result = await runScenario({ latest: NEXT_VERSION, guarded: true });
+  assert.equal(result.fetchCalls.length, 0, "replacement skips checks once");
+  assert.equal(result.prompts.length, 0);
+
+  result = await runScenario({
+    latest: NEXT_VERSION, selection: (options) => options[0],
+    restartSupported: false,
+  });
+  assert.equal(result.execCalls.length, 1);
+  assert.equal(result.restartCalls.length, 0);
+  assert.match(result.notifications.at(-1)?.message ?? "", /不支持自动重启/);
+
+  result = await runScenario({
+    latest: NEXT_VERSION, selection: (options) => options[0], restartError: true,
+  });
+  assert.equal(result.restartCalls.length, 1);
+  assert.match(result.notifications.at(-1)?.message ?? "", /更新已完成.*自动重启失败/);
+  assert.doesNotMatch(result.notifications.at(-1)?.message ?? "", /部分更新/);
 
   console.log("startup-update integration: ok");
 } finally {
